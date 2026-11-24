@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DriveFlow — Driving School Admin</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { margin: 0; background: #0f172a; color: #f8fafc; padding: 16px; }
+    .container { max-width: 960px; margin: 0 auto; }
+    h1 { font-size: 1.4rem; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; }
+    input, select, button { padding: 10px 12px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #f8fafc; font-size: 0.95rem; }
+    input, select { flex: 1; min-width: 150px; }
+    button { background: #10b981; border: none; color: #062e22; font-weight: 700; cursor: pointer; }
+    button:hover { background: #34d399; }
+    button.danger { background: #ef4444; color: #fff; }
+    button.sec { background: #334155; color: #f8fafc; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+    .tab { flex: 1; text-align: center; padding: 10px; background: #1e293b; border-radius: 8px; cursor: pointer; font-weight: 600; border: 1px solid #334155; }
+    .tab.active { background: #10b981; color: #062e22; border-color: #10b981; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #334155; }
+    .badge { padding: 3px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
+    .b-avail { background: #064e3b; color: #6ee7b7; }
+    .b-book { background: #1e3a8a; color: #93c5fd; }
+    .b-canc { background: #7f1d1d; color: #fca5a5; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>🚗 DriveFlow — Driving School Portal</h1>
+
+  <div id="loginBox" class="card">
+    <p style="margin-top:0;color:#94a3b8;">Enter Office Admin PIN to manage students, fees & daily slots:</p>
+    <div class="row">
+      <input type="password" id="pinInput" placeholder="Admin PIN (default: 1234)" />
+      <button onclick="login()">Unlock Dashboard</button>
+    </div>
+    <p id="loginErr" style="color:#f87171;margin-bottom:0;"></p>
+  </div>
+
+  <div id="appBox" class="hidden">
+    <div class="tabs">
+      <div class="tab active" id="tabSched" onclick="showTab('sched')">📅 Daily Schedule</div>
+      <div class="tab" id="tabStud" onclick="showTab('stud')">🎓 Students & Fees</div>
+    </div>
+
+    <div id="secSched">
+      <div class="card">
+        <div class="row" style="align-items:center;">
+          <input type="date" id="datePicker" onchange="loadData()" />
+          <select id="vehFilter" onchange="renderSlots()">
+            <option value="ALL">All 6 Vehicles</option>
+            <option value="ALTO_ROAD">Car Road (Alto 800)</option>
+            <option value="CAR_H">Car (H)</option>
+            <option value="SPLENDOR">Splendor (Gear)</option>
+            <option value="SPLENDOR_8">Splendor (8 Track)</option>
+            <option value="TVS_XL">TVS XL 1 (No Gear)</option>
+            <option value="TVS_XL_8">TVS XL 1 (8 Track)</option>
+          </select>
+          <button class="danger" onclick="toggleDay('CANCELLED')">🚫 Mark Holiday / Rain Off</button>
+          <button class="sec" onclick="toggleDay('AVAILABLE')">✅ Reopen Slots</button>
+        </div>
+      </div>
+      <div class="card" style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr><th>Time</th><th>Vehicle</th><th>Status</th><th>Student</th><th>Pickup</th></tr>
+          </thead>
+          <tbody id="slotsBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="secStud" class="hidden">
+      <div class="card">
+        <h3 style="margin-top:0;">➕ Register New Student</h3>
+        <div class="row" style="margin-bottom:10px;">
+          <input id="stName" placeholder="Student Full Name" />
+          <input id="stPhone" placeholder="10-digit WhatsApp Number" />
+          <input id="stLandmark" placeholder="Road Pickup Landmark (optional)" />
+        </div>
+        <div class="row">
+          <select id="stPkg">
+            <option value="COMBO">Car + Bike Combo (₹11,000 — 30 Car + 1 Bike, or 5 Bike if paid full)</option>
+            <option value="CAR_ONLY">Car Only (₹8,000 — 30 Car Classes)</option>
+            <option value="BIKE_ONLY">Bike Only (₹3,000 — 1 Bike Class)</option>
+          </select>
+          <input type="number" id="stPaid" placeholder="Cash Paid Today (₹)" />
+          <button onclick="addStudent()">Save Student</button>
+        </div>
+      </div>
+
+      <div class="card" style="overflow-x:auto;">
+        <h3 style="margin-top:0;">🎓 Registered Students & Fee Balance</h3>
+        <table>
+          <thead>
+            <tr><th>Name & Phone</th><th>Package</th><th>Paid / Total</th><th>Pending</th><th>Classes Left</th><th>Action</th></tr>
+          </thead>
+          <tbody id="studBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let ADMIN_PIN = localStorage.getItem('df_pin') || '';
+  let ALL_SLOTS = [];
+  let ALL_STUDENTS = [];
+
+  const todayIST = new Date(Date.now() + 5.5 * 3600000).toISOString().slice(0, 10);
+  document.getElementById('datePicker').value = todayIST;
+
+  if (ADMIN_PIN) {
+    document.getElementById('pinInput').value = ADMIN_PIN;
+    login();
+  }
+
+  function showTab(t) {
+    document.getElementById('secSched').classList.toggle('hidden', t !== 'sched');
+    document.getElementById('secStud').classList.toggle('hidden', t !== 'stud');
+    document.getElementById('tabSched').classList.toggle('active', t === 'sched');
+    document.getElementById('tabStud').classList.toggle('active', t === 'stud');
+  }
+
+  async function login() {
+    ADMIN_PIN = document.getElementById('pinInput').value.trim();
+    const ok = await loadData();
+    if (ok) {
+      localStorage.setItem('df_pin', ADMIN_PIN);
+      document.getElementById('loginBox').classList.add('hidden');
+      document.getElementById('appBox').classList.remove('hidden');
+    } else {
+      document.getElementById('loginErr').textContent = 'Wrong PIN. Try again.';
+    }
+  }
+
+  async function loadData() {
+    const date = document.getElementById('datePicker').value || todayIST;
+    const res = await fetch(`/api/admin/overview?date=${date}`, { headers: { 'x-admin-pin': ADMIN_PIN } });
+    if (!res.ok) return false;
+    const data = await res.json();
+    ALL_SLOTS = data.slots || [];
+    ALL_STUDENTS = data.students || [];
+    renderSlots();
+    renderStudents();
+    return true;
+  }
+
+  function renderSlots() {
+    const filter = document.getElementById('vehFilter').value;
+    const rows = filter === 'ALL' ? ALL_SLOTS : ALL_SLOTS.filter(s => s.vehicle_code === filter);
+    const body = document.getElementById('slotsBody');
+    if (!rows.length) {
+      body.innerHTML = '<tr><td colspan="5" style="color:#94a3b8;">No classes scheduled (Sunday holiday or Thursday Car off).</td></tr>';
+      return;
+    }
+    body.innerHTML = rows.map(s => {
+      const cls = s.status === 'BOOKED' ? 'b-book' : s.status === 'CANCELLED' ? 'b-canc' : 'b-avail';
+      return `<tr>
+        <td><b>${s.time_range}</b></td>
+        <td>${s.vehicle_label}</td>
+        <td><span class="badge ${cls}">${s.status}</span></td>
+        <td>${s.booked_by_name ? `${s.booked_by_name} (${s.booked_by_phone})` : '-'}</td>
+        <td>${s.pickup_landmark || '-'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderStudents() {
+    const body = document.getElementById('studBody');
+    body.innerHTML = ALL_STUDENTS.map(st => {
+      const pending = Math.max(0, (st.total_fee || 0) - (st.paid_amount || 0));
+      const bonus = st.full_cash_bonus ? ' 🎁' : '';
+      return `<tr>
+        <td><b>${st.name}</b><br><span style="color:#94a3b8;font-size:0.8rem;">${st.phone}</span></td>
+        <td>${st.package_type}${bonus}</td>
+        <td>₹${st.paid_amount} / ₹${st.total_fee}</td>
+        <td style="color:${pending > 0 ? '#fbbf24' : '#34d399'};font-weight:700;">₹${pending}</td>
+        <td>🚗 ${st.car_balance} | 🏍️ ${st.bike_balance}</td>
+        <td><button class="sec" onclick="addPayment('${st.phone}')">+ Pay</button></td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function addStudent() {
+    const payload = {
+      name: document.getElementById('stName').value,
+      phone: document.getElementById('stPhone').value,
+      pickup_landmark: document.getElementById('stLandmark').value,
+      package_type: document.getElementById('stPkg').value,
+      paid_amount: document.getElementById('stPaid').value
+    };
+    const res = await fetch('/api/admin/students', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-pin': ADMIN_PIN },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error || 'Error adding student');
+    document.getElementById('stName').value = '';
+    document.getElementById('stPhone').value = '';
+    document.getElementById('stLandmark').value = '';
+    document.getElementById('stPaid').value = '';
+    alert(`Saved ${data.student.name}! Classes: ${data.student.car_balance} Car, ${data.student.bike_balance} Bike`);
+    loadData();
+  }
+
+  async function addPayment(phone) {
+    const amt = prompt('Enter cash amount paid today (₹):');
+    if (!amt) return;
+    const res = await fetch('/api/admin/payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-pin': ADMIN_PIN },
+      body: JSON.stringify({ phone, add_amount: amt })
+    });
+    if (res.ok) loadData();
+  }
+
+  async function toggleDay(status) {
+    const date = document.getElementById('datePicker').value;
+    const vehicle_code = document.getElementById('vehFilter').value;
+    if (!confirm(`Set ${vehicle_code} on ${date} to ${status}?`)) return;
+    await fetch('/api/admin/toggle-day', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-pin': ADMIN_PIN },
+      body: JSON.stringify({ date, vehicle_code, status })
+    });
+    loadData();
+  }
+</script>
+</body>
+</html>
